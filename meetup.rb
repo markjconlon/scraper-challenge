@@ -5,39 +5,44 @@ require 'Nokogiri'
 require 'open-uri'
 require 'csv'
 
-# takes the data passed from get_page and appends desired pieces
-# to names_ids.csv
-def scrape_page(mem_list)
-  counter = 0
-  mem_list.each do |li|
-    id = (mem_list[counter]["href"]).split.map {|char| char.gsub(/[^\d]/, '')}
-    CSV.open('names_ids.csv', 'a+') do |csv|
-      csv << [mem_list[counter].text, id.join]
-    end
-    counter += 1
-  end
-end
-
-# get_page simply does that it gets the data from the page we
-# want and then sends it for further extraction and appending
-# via scrape_page
-def get_page(num_pages)
-  counter = 0
-  num_pages.times do
-    # split the url up for readability and allows easy subustitution
-    # if we would like to scrape other groups in the future
-    start_url = "https://www.meetup.com/fintechto/members/?offset="
-    offset = (counter * 20).to_s
-    end_url = "&sort=name&desc=0"
-    page = Nokogiri::HTML(open(start_url + offset + end_url))
-    mem_list = page.css("#member_list h4>a")
-    scrape_page(mem_list)
-    counter += 1
-    # added a short random sleep timer in order to lower the frequecy
-    # of requests to meetups servers
+# master method
+def scrape(num_pages)
+  num_pages.times do |page_number|
+    page = get_page(page_number)
+    data = scrape_page(page)
+    write_to_csv(data)
+    # added a short random sleep timer in order to lower the frequecy of requests
     sleep rand(1..3)
   end
 end
 
-# Meetup displays 20 results per page 20*25 pages = 500 names
-get_page(25)
+# gets the page and turns it into a Nokogiri object
+def get_page(page_number)
+  start_url = "https://www.meetup.com/fintechto/members/?offset="
+  offset = (page_number * 20).to_s
+  end_url = "&sort=name&desc=0"
+  page = Nokogiri::HTML(open(start_url + offset + end_url))
+  page
+end
+
+# takes the data passed from get_page and returns the members array [name, ids]
+def scrape_page(page)
+  mem_list = page.css("#member_list h4>a")
+  members = []
+  mem_list.each_with_index do |mem_link|
+    id = (mem_link["href"]).split.map {|char| char.gsub(/[^\d]/, '')}
+    members << [mem_link.text, id.join]
+  end
+  members
+end
+
+# accepts the members data and writes each member on a new line
+def write_to_csv(data)
+  CSV.open('names_ids.csv', 'a+') do |csv|
+    data.each do |member|
+      csv << member
+    end
+  end
+end
+# each page represents 20 members 25*20 = 500 members
+scrape(25)
